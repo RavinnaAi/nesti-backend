@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import dns from 'node:dns';
 import cors from 'cors';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -30,6 +31,11 @@ import { configureCloudinary } from './services/media/cloudinaryClient.js';
 
 // Load env
 dotenv.config();
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch (_err) {
+  // Older Node versions may not support this; continue without hard failure.
+}
 configureCloudinary();
 
 const app = express();

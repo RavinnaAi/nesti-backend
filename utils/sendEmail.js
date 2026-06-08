@@ -33,6 +33,7 @@ export function createEmailTransport() {
     secure,
     auth: { user, pass },
     family: 4,
+    tls: { servername: host },
     connectionTimeout: 10000,
     greetingTimeout: 10000,
     socketTimeout: 15000,
