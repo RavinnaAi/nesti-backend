@@ -66,8 +66,8 @@ const queueSignupOtpEmail = ({ email, first_name, otp }) => {
   });
 };
 
-const queuePasswordResetEmail = (email, otp) => {
-  sendEmail({
+const sendPasswordResetEmail = (email, otp) => {
+  return sendEmail({
     email,
     subject: 'Nesti AI - Password Reset OTP',
     message: `You requested a password reset. Your OTP is: ${otp}. It will expire in 10 minutes.`,
@@ -77,10 +77,6 @@ const queuePasswordResetEmail = (email, otp) => {
       otp,
       footerNote: 'If you did not request this, you can safely ignore this email.',
     }),
-  }).then((result) => {
-    if (!result.success) {
-      logger.error(`Password reset email failed to send to ${email}`);
-    }
   });
 };
 
@@ -513,7 +509,17 @@ export const forgotPasswordService = async ({ email }) => {
   user.reset_password_expires = new Date(Date.now() + 10 * 60 * 1000);
   await user.save();
 
-  queuePasswordResetEmail(user.email, otp);
+  const emailResult = await sendPasswordResetEmail(user.email, otp);
+  if (!emailResult.success) {
+    logger.error(`Password reset email failed to send to ${user.email}`);
+    return {
+      status: 502,
+      body: {
+        success: false,
+        message: 'Unable to send reset code right now. Please try again later.',
+      },
+    };
+  }
 
   return {
     status: 200,
