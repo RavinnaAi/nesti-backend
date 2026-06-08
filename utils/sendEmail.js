@@ -1,38 +1,66 @@
-import postmark from 'postmark';
+import nodemailer from 'nodemailer';
 import logger from './logger.js';
+
+function env(name, fallbackName = '') {
+  return String(process.env[name] || (fallbackName ? process.env[fallbackName] : '') || '').trim();
+}
+
+function smtpConfig() {
+  const host = env('EMAIL_HOST', 'SMTP_HOST');
+  const port = Number(env('EMAIL_PORT', 'SMTP_PORT') || 587);
+  const user = env('EMAIL_USER', 'SMTP_USER');
+  const pass = env('EMAIL_PASS', 'SMTP_PASS');
+  const fromAddress = env('EMAIL_FROM', 'SMTP_FROM') || user;
+  const fromName = env('EMAIL_FROM_NAME', 'SMTP_FROM_NAME') || 'Nesti AI';
+  const from = fromName ? { name: fromName, address: fromAddress } : fromAddress;
+  const secureEnv = env('EMAIL_SECURE', 'SMTP_SECURE').toLowerCase();
+  const secure = secureEnv
+    ? ['1', 'true', 'yes', 'on'].includes(secureEnv)
+    : port === 465;
+
+  return { host, port, user, pass, from, fromAddress, fromName, secure };
+}
+
+export function createEmailTransport() {
+  const { host, port, user, pass, secure } = smtpConfig();
+  if (!host || !user || !pass) {
+    throw new Error('Missing SMTP config: EMAIL_HOST, EMAIL_USER, or EMAIL_PASS');
+  }
+
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    auth: { user, pass },
+  });
+}
+
+export async function verifyEmailTransport() {
+  const transport = createEmailTransport();
+  await transport.verify();
+  const { host, port, user, fromAddress, fromName, secure } = smtpConfig();
+  return { host, port, user, from: fromAddress, fromName, secure };
+}
 
 const sendEmail = async (options) => {
   try {
-    if (!process.env.POSTMARK_SERVER_TOKEN || !process.env.POSTMARK_FROM_EMAIL) {
-      throw new Error('Missing Postmark config: POSTMARK_SERVER_TOKEN or POSTMARK_FROM_EMAIL');
+    if (options.templateAlias || options.templateId) {
+      throw new Error('Template email sending is not supported by the SMTP transport');
     }
 
-    const client = new postmark.ServerClient(process.env.POSTMARK_SERVER_TOKEN);
-    const from = process.env.POSTMARK_FROM_EMAIL;
-    const to = options.email;
-    const messageStream = options.messageStream || 'outbound';
+    const transport = createEmailTransport();
+    const { from } = smtpConfig();
 
-    const response =
-      options.templateAlias || options.templateId
-        ? await client.sendEmailWithTemplate({
-            From: from,
-            To: to,
-            TemplateAlias: options.templateAlias,
-            TemplateId: options.templateId,
-            TemplateModel: options.templateModel || {},
-            MessageStream: messageStream,
-          })
-        : await client.sendEmail({
-            From: from,
-            To: to,
-            Subject: options.subject,
-            TextBody: options.message,
-            HtmlBody: options.htmlMessage || `<p>${options.message}</p>`,
-            MessageStream: messageStream,
-          });
-    logger.info(`Message sent via Postmark: ${response.MessageID}`);
+    const response = await transport.sendMail({
+      from,
+      to: options.email,
+      subject: options.subject,
+      text: options.message,
+      html: options.htmlMessage || `<p>${options.message}</p>`,
+    });
+    logger.info(`Message sent via SMTP: ${response.messageId}`);
 
-    return { success: true };
+    return { success: true, messageId: response.messageId };
   } catch (error) {
     logger.error(`Error sending email: ${error.message}`);
     return { success: false, error };

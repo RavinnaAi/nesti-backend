@@ -2,12 +2,12 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import cors from 'cors';
-import postmark from 'postmark';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import dotenv from 'dotenv';
 import morgan from 'morgan';
 import logger from './utils/logger.js';
+import { verifyEmailTransport } from './utils/sendEmail.js';
 import authRoutes from './routes/authRoutes.js';
 import embedRoutes from './routes/embedRoutes.js';
 import chatRoutes from './routes/chatRoutes.js';
@@ -85,27 +85,22 @@ app.get('/lawyer', (req, res) => {
 
 app.get('/api/health/smtp', async (req, res) => {
   try {
-    if (!process.env.POSTMARK_SERVER_TOKEN || !process.env.POSTMARK_FROM_EMAIL) {
-      return res.status(500).json({
-        success: false,
-        message: 'Missing Postmark config: POSTMARK_SERVER_TOKEN or POSTMARK_FROM_EMAIL',
-      });
-    }
-
-    const client = new postmark.ServerClient(process.env.POSTMARK_SERVER_TOKEN);
-    const server = await client.getServer();
+    const smtp = await verifyEmailTransport();
 
     return res.json({
       success: true,
-      message: 'Postmark connection verified successfully',
-      serverName: server?.Name,
-      postmarkFromEmail: process.env.POSTMARK_FROM_EMAIL,
+      message: 'SMTP connection verified successfully',
+      smtpHost: smtp.host,
+      smtpPort: smtp.port,
+      smtpUser: smtp.user,
+      smtpFrom: smtp.from,
+      smtpSecure: smtp.secure,
     });
   } catch (error) {
-    logger.error(`Postmark health check failed: ${error.message}`);
+    logger.error(`SMTP health check failed: ${error.message}`);
     return res.status(500).json({
       success: false,
-      message: 'Postmark verification failed',
+      message: 'SMTP verification failed',
       error: error.message,
     });
   }
